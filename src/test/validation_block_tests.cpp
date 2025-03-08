@@ -28,6 +28,7 @@ struct MinerTestingSetup : public RegTestingSetup {
     std::shared_ptr<const CBlock> BadBlock(const uint256& prev_hash);
     std::shared_ptr<CBlock> FinalizeBlock(std::shared_ptr<CBlock> pblock);
     void BuildChain(const uint256& root, int height, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::shared_ptr<const CBlock>>& blocks);
+    void BuildTestChainStructure(std::map<char, std::shared_ptr<const CBlock>>& blocks, std::map<char, CBlockIndex*>& indices);
 };
 } // namespace validation_block_tests
 
@@ -361,5 +362,190 @@ BOOST_AUTO_TEST_CASE(witness_commitment_index)
     pblock.vtx[0] = MakeTransactionRef(std::move(txCoinbase));
 
     BOOST_CHECK_EQUAL(GetWitnessCommitmentIndex(pblock), 2);
+}
+
+/**
+ * Builds a specific chain structure for testing block invalidation:
+ * A->B->C->D->E->F (main chain)
+ * A->B->C->G (fork 1)
+ * A->B->H->I->J (fork 2)
+ * A->B->H->K (fork 3)
+*/
+void MinerTestingSetup::BuildTestChainStructure(
+    std::map<char, std::shared_ptr<const CBlock>>& blocks,
+    std::map<char, CBlockIndex*>& indices)
+{
+    bool ignored;
+    auto ProcessBlock = [&](std::shared_ptr<const CBlock> block) -> bool {
+        return Assert(m_node.chainman)->ProcessNewBlock(block, /*force_processing=*/true, /*min_pow_checked=*/true, /*new_block=*/&ignored);
+    };
+
+    // Start with genesis block
+    blocks['A'] = std::make_shared<CBlock>(Params().GenesisBlock());
+    BOOST_CHECK(ProcessBlock(blocks['A']));
+
+    // Create main chain: A -> B -> C -> D -> E -> F
+    blocks['B'] = GoodBlock(blocks['A']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['B']));
+
+    blocks['C'] = GoodBlock(blocks['B']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['C']));
+
+    blocks['D'] = GoodBlock(blocks['C']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['D']));
+
+    blocks['E'] = GoodBlock(blocks['D']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['E']));
+
+    blocks['F'] = GoodBlock(blocks['E']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['F']));
+
+    // Create first fork: A -> B -> C -> G
+    blocks['G'] = GoodBlock(blocks['C']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['G']));
+
+    // Create second fork: A -> B -> H -> I -> J
+    blocks['H'] = GoodBlock(blocks['B']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['H']));
+
+    blocks['I'] = GoodBlock(blocks['H']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['I']));
+
+    blocks['J'] = GoodBlock(blocks['I']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['J']));
+
+    // Create third fork: A -> B -> H -> K
+    blocks['K'] = GoodBlock(blocks['H']->GetHash());
+    BOOST_CHECK(ProcessBlock(blocks['K']));
+
+    // Lookup all block indices
+    LOCK(cs_main);
+    for (const auto& pair : blocks) {
+        char name = pair.first;
+        const auto& block = pair.second;
+        indices[name] = m_node.chainman->m_blockman.LookupBlockIndex(block->GetHash());
+        BOOST_CHECK(indices[name] != nullptr);
+    }
+
+    // Verify chain relationships
+    BOOST_CHECK_EQUAL(indices['B']->pprev->GetBlockHash(), blocks['A']->GetHash());
+
+    BOOST_CHECK_EQUAL(indices['C']->pprev->GetBlockHash(), blocks['B']->GetHash());
+    BOOST_CHECK_EQUAL(indices['D']->pprev->GetBlockHash(), blocks['C']->GetHash());
+    BOOST_CHECK_EQUAL(indices['E']->pprev->GetBlockHash(), blocks['D']->GetHash());
+    BOOST_CHECK_EQUAL(indices['F']->pprev->GetBlockHash(), blocks['E']->GetHash());
+
+    BOOST_CHECK_EQUAL(indices['G']->pprev->GetBlockHash(), blocks['C']->GetHash());
+
+    BOOST_CHECK_EQUAL(indices['H']->pprev->GetBlockHash(), blocks['B']->GetHash());
+    BOOST_CHECK_EQUAL(indices['I']->pprev->GetBlockHash(), blocks['H']->GetHash());
+    BOOST_CHECK_EQUAL(indices['J']->pprev->GetBlockHash(), blocks['I']->GetHash());
+
+    BOOST_CHECK_EQUAL(indices['K']->pprev->GetBlockHash(), blocks['H']->GetHash());
+
+    // Verify F is the tip (best chain)
+    BOOST_CHECK_EQUAL(m_node.chainman->ActiveChain().Tip()->GetBlockHash(), blocks['F']->GetHash());
+}
+
+/**
+ * Tests invalidating a block (C) that is part of the active chain.
+ * This should cause blocks C, D, E, F, and G to become invalid,
+ * trigger a chain reorganization, and eventually make J the new chain tip.
+*/
+BOOST_AUTO_TEST_CASE(invalidate_active_chain_block)
+{
+    std::map<char, std::shared_ptr<const CBlock>> blocks;
+    std::map<char, CBlockIndex*> indices;
+
+    // Build our chain structure
+    BuildTestChainStructure(blocks, indices);
+
+    // Assert expected best chain tip (F)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->GetBlockHash()),
+                     blocks['F']->GetHash());
+
+    // Invalidate block C which is on the active chain
+    BlockValidationState state;
+    m_node.chainman->ActiveChainstate().InvalidateBlock(state, indices['C']);
+
+    // Assert m_best_header (should be J - longest valid chain)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->m_best_header->GetBlockHash()),
+                     blocks['J']->GetHash());
+
+    // Assert nStatus for invalidated blocks
+    {
+        LOCK(cs_main);
+
+        BOOST_CHECK(indices['C']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['D']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['E']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['F']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['G']->nStatus & BLOCK_FAILED_MASK);
+
+        BOOST_CHECK(indices['C']->nStatus & BLOCK_FAILED_VALID);
+        BOOST_CHECK(indices['D']->nStatus & BLOCK_FAILED_CHILD);
+        BOOST_CHECK(indices['E']->nStatus & BLOCK_FAILED_CHILD);
+        BOOST_CHECK(indices['F']->nStatus & BLOCK_FAILED_CHILD);
+        BOOST_CHECK(indices['G']->nStatus & BLOCK_FAILED_CHILD);
+    }
+
+    // Assert active chain tip (should be B - highest valid ancestor of previous tip)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->GetBlockHash()),
+                     blocks['B']->GetHash());
+
+    // Activate best chain
+    BOOST_CHECK(m_node.chainman->ActiveChainstate().ActivateBestChain(state));
+
+    // Assert active chain tip again (should be J - new longest valid chain)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->GetBlockHash()),
+                     blocks['J']->GetHash());
+}
+
+/**
+ * Tests invalidating a block (H) that is on a fork, not in the active chain.
+ * This should mark H, I, J, and K as invalid, but should not affect
+ * the active chain, which continues to have F as the tip.
+*/
+BOOST_AUTO_TEST_CASE(invalidate_fork_block)
+{
+    std::map<char, std::shared_ptr<const CBlock>> blocks;
+    std::map<char, CBlockIndex*> indices;
+
+    // Build our chain structure
+    BuildTestChainStructure(blocks, indices);
+
+    // Assert expected best chain tip (F)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->GetBlockHash()),
+                     blocks['F']->GetHash());
+
+    // Invalidate block H which is on a fork
+    BlockValidationState state;
+    m_node.chainman->ActiveChainstate().InvalidateBlock(state, indices['H']);
+
+    // Assert m_best_header (should still be F - active chain unaffected)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->m_best_header->GetBlockHash()),
+                     blocks['F']->GetHash());
+
+    // Assert nStatus for invalidated blocks
+    {
+        LOCK(cs_main);
+
+        BOOST_CHECK(indices['H']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['I']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['J']->nStatus & BLOCK_FAILED_MASK);
+        BOOST_CHECK(indices['K']->nStatus & BLOCK_FAILED_MASK);
+
+        BOOST_CHECK(indices['H']->nStatus & BLOCK_FAILED_VALID);
+        BOOST_CHECK(indices['I']->nStatus & BLOCK_FAILED_CHILD);
+        BOOST_CHECK(indices['J']->nStatus & BLOCK_FAILED_CHILD);
+        BOOST_CHECK(indices['K']->nStatus & BLOCK_FAILED_CHILD);
+    }
+
+    // Activate best chain
+    BOOST_CHECK(m_node.chainman->ActiveChainstate().ActivateBestChain(state));
+
+    // Assert active chain tip again (still F - unchanged)
+    BOOST_CHECK_EQUAL(WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->GetBlockHash()),
+                     blocks['F']->GetHash());
 }
 BOOST_AUTO_TEST_SUITE_END()
