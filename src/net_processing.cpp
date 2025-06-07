@@ -5891,12 +5891,12 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                     // Note: If all our peers are inbound, then we won't
                     // disconnect our sync peer for stalling; we have bigger
                     // problems if we can't get any outbound peers.
-                    if (!pto->HasPermission(NetPermissionFlags::NoBan)) {
+                    if (!pto->IsManualConn() && !pto->HasPermission(NetPermissionFlags::NoBan)) {
                         LogInfo("Timeout downloading headers, %s\n", pto->DisconnectMsg(fLogIPs));
                         pto->fDisconnect = true;
                         return true;
                     } else {
-                        LogInfo("Timeout downloading headers from noban peer, not %s\n", pto->DisconnectMsg(fLogIPs));
+                        LogInfo("Timeout downloading headers from %s peer, not %s\n", pto->IsManualConn() ? "addnode" : "noban", pto->DisconnectMsg(fLogIPs));
                         // Reset the headers sync state so that we have a
                         // chance to try downloading from a different peer.
                         // Note: this will also result in at least one more

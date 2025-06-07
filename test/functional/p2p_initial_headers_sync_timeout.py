@@ -3,14 +3,14 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test peer timeout during initial headers sync.
-Tests normal peer disconnection vs noban peer behavior."""
+Tests normal peer disconnection vs noban peer behavior vs addnode peer behavior."""
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.p2p import (
     p2p_lock,
     P2PInterface,
 )
-from test_framework.util import assert_equal
+from test_framework.util import assert_equal, p2p_port, MAX_NODES
 import time
 
 HEADERS_SYNC_BASE_TIMEOUT_SEC = 900  # 15 minutes
@@ -30,6 +30,7 @@ class HeadersSyncTimeoutTest(BitcoinTestFramework):
 
         self.test_normal_peer_timeout()
         self.test_noban_peer_timeout()
+        self.test_addnode_peer_timeout()
 
     def test_normal_peer_timeout(self):
         self.log.info("Test peer disconnection on header timeout")
@@ -50,15 +51,22 @@ class HeadersSyncTimeoutTest(BitcoinTestFramework):
     def test_noban_peer_timeout(self):
         self.log.info("Test noban peer on header timeout")
         self.restart_node(0, extra_args=['-whitelist=noban@127.0.0.1'])
+        self.test_no_disconnection_on_timeout()
+
+    def test_addnode_peer_timeout(self):
+        self.log.info("Test addnode peer on header timeout")
+        self.restart_node(0)
+        self.test_no_disconnection_on_timeout(addnode=True)
+
+    def test_no_disconnection_on_timeout(self, addnode=False):
         self.node.setmocktime(int(time.time()))
-        self.setup_peers()
+        self.setup_peers(addnode)
 
         with self.node.assert_debug_log(
-                ["Timeout downloading headers from noban peer, "
-                 "not disconnecting peer=0"]):
+                [f"Timeout downloading headers from {"addnode" if addnode else "noban"} peer, not disconnecting peer=0"]):
             self.trigger_timeout()
 
-        self.log.info("Check that noban peer1 is not disconnected")
+        self.log.info("Check that addnode peer1 is not disconnected")
         self.peer1.sync_with_ping()
         assert_equal(self.node.num_test_p2p_connections(), 2)
 
@@ -71,12 +79,25 @@ class HeadersSyncTimeoutTest(BitcoinTestFramework):
                     count += 1
         assert_equal(count, 1)
 
-    def setup_peers(self):
+    def setup_peers(self, addnode=False):
         self.log.info("Add peer1 and check it receives an initial "
                       "getheaders request")
+        self.peer1 = P2PInterface()
+        if addnode:
+            self.peer1.peer_accept_connection(
+                connect_cb=lambda address, port: self.log.debug(f"Addnode peer connected from {address}:{port}"),
+                connect_id=1,
+                net=self.node.chain,
+                timeout_factor=self.node.timeout_factor,
+                supports_v2_p2p=False,
+                reconnect=False
+            )()
         with self.node.assert_debug_log(
                 expected_msgs=["initial getheaders (0) to peer=0"]):
-            self.peer1 = self.node.add_p2p_connection(P2PInterface())
+            if addnode:
+                self.node.addnode(f"127.0.0.1:{p2p_port(MAX_NODES - 1)}", "onetry")
+            else:
+                self.node.add_p2p_connection(self.peer1)
         self.peer1.wait_for_getheaders()
 
         self.log.info("Add outbound peer2")
