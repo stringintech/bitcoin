@@ -981,6 +981,15 @@ int btck_block_to_bytes(const btck_Block* block, btck_WriteBytes writer, void* u
     }
 }
 
+int btck_block_get_serialize_size(const btck_Block* block)
+{
+    try {
+        return ::GetSerializeSize(TX_WITH_WITNESS(*block->m_block));
+    } catch (...) {
+        return -1;
+    }
+}
+
 btck_BlockHash* btck_block_get_hash(const btck_Block* block)
 {
     auto hash{block->m_block->GetHash()};

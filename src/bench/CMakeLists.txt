@@ -86,3 +86,5 @@ add_test(NAME bench_sanity_check
 )
 
 install_binary_component(bench_bitcoin INTERNAL)
+
+add_subdirectory(kernel)

@@ -1129,6 +1129,16 @@ BITCOINKERNEL_API int btck_block_to_bytes(
     void* user_data
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
+/*
+ * @brief Returns the serialized size of the block.
+ *
+ * @param[in] block     Non-null.
+ * @return              The size in bytes of the serialized block, or -1 on error.
+ */
+BITCOINKERNEL_API int btck_block_get_serialize_size(
+    const btck_Block* block
+) BITCOINKERNEL_ARG_NONNULL(1);
+
 /**
  * Destroy the block.
  */

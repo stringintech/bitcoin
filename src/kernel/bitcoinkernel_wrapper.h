@@ -278,9 +278,12 @@ public:
 };
 
 template <typename T>
-std::vector<std::byte> write_bytes(const T* object, int (*to_bytes)(const T*, btck_WriteBytes, void*))
+std::vector<std::byte> write_bytes(const T* object, int (*to_bytes)(const T*, btck_WriteBytes, void*), size_t prealloc_size = 0)
 {
     std::vector<std::byte> bytes;
+    if (prealloc_size > 0) {
+        bytes.reserve(prealloc_size);
+    }
     struct UserData {
         std::vector<std::byte>* bytes;
         std::exception_ptr exception;
@@ -541,6 +544,11 @@ public:
     std::vector<std::byte> ToBytes() const
     {
         return write_bytes(impl(), btck_block_to_bytes);
+    }
+
+    std::vector<std::byte> ToPreAllocBytes() const
+    {
+        return write_bytes(impl(), btck_block_to_bytes, btck_block_get_serialize_size(impl()));
     }
 
     friend class ChainMan;
