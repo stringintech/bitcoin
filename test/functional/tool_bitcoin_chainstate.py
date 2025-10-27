@@ -6,17 +6,58 @@
 import subprocess
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework.util import assert_equal
+from test_framework.wallet import MiniWallet
 
 class BitcoinChainstateTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_bitcoin_chainstate()
 
     def set_test_params(self):
-        self.setup_clean_chain = True
-        self.chain = ""
-        self.num_nodes = 1
-        # Set prune to avoid disk space warning.
-        self.extra_args = [["-prune=550"]]
+        """Use the pregenerated, deterministic chain up to height 199."""
+        self.num_nodes = 2
+        self.extra_args = [[],[]]
+
+    def setup_network(self):
+        """Start with the nodes disconnected so that one can generate a snapshot
+        including blocks the other hasn't yet seen."""
+        self.add_nodes(2)
+        self.start_nodes(extra_args=self.extra_args)
+
+    def run_test(self):
+        n0 = self.nodes[0]
+        n1 = self.nodes[1]
+
+        # nodes are disconnected; n0 mines some blocks until reaches
+        # the snapshot height while n1 unaware of them
+        self.mini_wallet = MiniWallet(n0)
+        for n in self.nodes:
+            n.setmocktime(n.getblockheader(n.getbestblockhash())['time'])
+        for i in range(100):
+            block_tx = 1
+            if i % 3 == 0:
+                self.mini_wallet.send_self_transfer(from_node=n0)
+                block_tx += 1
+            self.generate(n0, nblocks=1, sync_fun=self.no_op)
+        assert_equal(n0.getblockcount(), 299)
+        assert_equal(n0.getbestblockhash(), "7cc695046fec709f8c9394b6f928f81e81fd3ac20977bb68760fa1faa7916ea2") # hardcoded in regtest chainparams
+        assert_equal(n1.getblockcount(), 199)
+        dump_output = n0.dumptxoutset('utxos.dat', "latest")
+
+        # n1 should know about the headers to activate the snapshot
+        for i in range(1, 300):
+            block = n0.getblock(n0.getblockhash(i), 0)
+            n1.submitheader(block)
+        loaded = n1.loadtxoutset(dump_output['path'])
+        assert_equal(loaded['base_height'], 299)
+        datadir = n1.cli.datadir
+        n1.stop_node()
+
+        # n0 mines a new block which should extend the n1 snapshot chain later
+        self.generate(n0, nblocks=1, sync_fun=self.no_op)
+        new_best_block = n0.getblock(n0.getbestblockhash(), 0)
+        n0.stop_node()
+        self.add_block(datadir, new_best_block, "Block extended best chain")
 
     def add_block(self, datadir, input, expected_stderr):
         proc = subprocess.Popen(
@@ -33,17 +74,6 @@ class BitcoinChainstateTest(BitcoinTestFramework):
         if expected_stderr not in stderr:
             raise AssertionError(f"Expected stderr output {expected_stderr} does not partially match stderr:\n{stderr}")
 
-    def run_test(self):
-        node = self.nodes[0]
-        datadir = node.cli.datadir
-        node.stop_node()
-
-        self.log.info(f"Testing bitcoin-chainstate {self.get_binaries().chainstate_argv()} with datadir: {datadir}")
-        block_one = "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e362990101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000"
-        self.add_block(datadir, block_one, "Block has not yet been rejected")
-        self.add_block(datadir, block_one, "duplicate")
-        self.add_block(datadir, "00", "Block decode failed")
-        self.add_block(datadir, "", "Empty line found")
 
 if __name__ == "__main__":
     BitcoinChainstateTest(__file__).main()

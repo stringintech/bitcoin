@@ -165,8 +165,7 @@ int main(int argc, char* argv[])
     argv = win_argv.data();
 #endif
 
-    std::filesystem::path abs_datadir{std::filesystem::absolute(argv[1])};
-    std::filesystem::create_directories(abs_datadir);
+    std::filesystem::path abs_datadir{std::filesystem::absolute(argv[1]) / "regtest"};
 
     btck_LoggingOptions logging_options = {
         .log_timestamps = true,
@@ -177,11 +176,13 @@ int main(int argc, char* argv[])
     };
 
     logging_set_options(logging_options);
+    logging_set_level_category(LogCategory::ALL, LogLevel::TRACE_LEVEL);
+    logging_enable_category(LogCategory::ALL);
 
     Logger logger{std::make_unique<KernelLog>(KernelLog{})};
 
     ContextOptions options{};
-    ChainParams params{ChainType::MAINNET};
+    ChainParams params{ChainType::REGTEST};
     options.SetChainParams(params);
 
     options.SetNotifications(std::make_shared<TestKernelNotifications>());
@@ -217,10 +218,16 @@ int main(int argc, char* argv[])
             continue;
         }
 
+        auto hash{block->GetHash()};
+
         bool new_block = false;
         bool accepted = chainman->ProcessBlock(*block, &new_block);
         if (accepted) {
-            std::cerr << "Block has not yet been rejected" << std::endl;
+            if (block->GetHash() == chainman->GetChain().Tip().GetHash()) {
+                std::cerr << "Block extended best chain" << std::endl;
+            } else {
+                std::cerr << "Block has not yet been rejected" << std::endl;
+            }
         } else {
             std::cerr << "Block was not accepted" << std::endl;
         }

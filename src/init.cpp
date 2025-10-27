@@ -1353,6 +1353,8 @@ static ChainstateLoadResult InitAndLoadChainstate(
         }
     };
     node::ChainstateLoadOptions options;
+    // Core always creates a mempool (even in blocksonly mode), so options.mempool is always set.
+    // This differs from kernel API which may run without a mempool entirely.
     options.mempool = Assert(node.mempool.get());
     options.wipe_chainstate_db = do_reindex || do_reindex_chainstate;
     options.prune = chainman.m_blockman.IsPruneMode();
