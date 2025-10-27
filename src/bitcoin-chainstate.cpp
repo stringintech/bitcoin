@@ -49,16 +49,18 @@ int main(int argc, char* argv[])
     LogInstance().DisableLogging();
 
     // SETUP: Argument parsing and handling
-    if (argc != 2) {
+    const bool has_regtest_flag{argc == 3 && std::string(argv[1]) == "-regtest"};
+    if (argc < 2 || argc > 3 || (argc == 3 && !has_regtest_flag)) {
         std::cerr
-            << "Usage: " << argv[0] << " DATADIR" << std::endl
+            << "Usage: " << argv[0] << " [-regtest] DATADIR" << std::endl
             << "Display DATADIR information, and process hex-encoded blocks on standard input." << std::endl
+            << "Uses mainnet parameters by default, regtest with -regtest flag" << std::endl
             << std::endl
             << "IMPORTANT: THIS EXECUTABLE IS EXPERIMENTAL, FOR TESTING ONLY, AND EXPECTED TO" << std::endl
             << "           BREAK IN FUTURE VERSIONS. DO NOT USE ON YOUR ACTUAL DATADIR." << std::endl;
         return 1;
     }
-    fs::path abs_datadir{fs::absolute(argv[1])};
+    fs::path abs_datadir{fs::absolute(argv[argc-1])};
     fs::create_directories(abs_datadir);
 
 
@@ -109,7 +111,7 @@ int main(int argc, char* argv[])
     kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
 
     // SETUP: Chainstate
-    auto chainparams = CChainParams::Main();
+    auto chainparams = has_regtest_flag ? CChainParams::RegTest({}) : CChainParams::Main();
     const ChainstateManager::Options chainman_opts{
         .chainparams = *chainparams,
         .datadir = abs_datadir,
