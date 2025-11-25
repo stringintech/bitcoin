@@ -141,6 +141,7 @@ BASE_SCRIPTS = [
     'wallet_listtransactions.py',
     'wallet_miniscript.py',
     # vv Tests less than 30s vv
+    'example_regtest_reorg.py',
     'p2p_invalid_messages.py',
     'rpc_createmultisig.py',
     'p2p_timeouts.py --v1transport',
