@@ -1,6 +1,8 @@
 #include <kernel/bitcoinkernel_wrapper.h>
 
-#include <cassert>
+#include <common/args.h>
+#include <util/translation.h>
+
 #include <charconv>
 #include <filesystem>
 #include <iostream>
@@ -9,7 +11,24 @@
 #include <string_view>
 #include <vector>
 
-using namespace btck;
+using btck::ValidationInterface;
+using btck::Block;
+using btck::BlockValidationState;
+using btck::ValidationMode;
+using btck::BlockValidationResult;
+using btck::KernelNotifications;
+using btck::Warning;
+using btck::SynchronizationState;
+using btck::BlockTreeEntry;
+using btck::logging_set_options;
+using btck::ChainMan;
+using btck::Logger;
+using btck::ContextOptions;
+using btck::ChainParams;
+using btck::Context;
+using btck::ChainstateManagerOptions;
+
+const TranslateFn G_TRANSLATION_FUN{nullptr};
 
 std::vector<std::byte> hex_string_to_byte_vec(std::string_view hex)
 {
@@ -128,19 +147,54 @@ public:
     }
 };
 
+std::optional<btck::ChainType> BtckChainTypeFromString(std::string_view chain) {
+    if (chain == "main") {
+        return btck::ChainType::MAINNET;
+    } else if (chain == "test") {
+        return btck::ChainType::TESTNET;
+    } else if (chain == "testnet4") {
+        return btck::ChainType::TESTNET_4;
+    } else if (chain == "signet") {
+        return btck::ChainType::SIGNET;
+    } else if (chain == "regtest") {
+        return btck::ChainType::REGTEST;
+    } else {
+        return std::nullopt;
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    // SETUP: Argument parsing and handling
-    if (argc != 2) {
+    ArgsManager args;
+    SetupHelpOptions(args);
+
+    std::string error;
+    args.AddArg("-datadir=<datadir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    args.AddArg("-chain=<chain>", "Use the chain <chain> (default: main). Allowed values: main, test, testnet4, signet, regtest", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+
+    if (!args.ParseParameters(argc, argv, error)) {
+        std::cerr << "Error parsing command line arguments: " << error << std::endl;
+        return 1;
+    }
+
+    if (HelpRequested(args) || !args.IsArgSet("-datadir")) {
         std::cerr
-            << "Usage: " << argv[0] << " DATADIR" << std::endl
-            << "Display DATADIR information, and process hex-encoded blocks on standard input." << std::endl
+            << "Display <datadir> information, and process hex-encoded blocks on standard input." << std::endl
             << std::endl
             << "IMPORTANT: THIS EXECUTABLE IS EXPERIMENTAL, FOR TESTING ONLY, AND EXPECTED TO" << std::endl
             << "           BREAK IN FUTURE VERSIONS. DO NOT USE ON YOUR ACTUAL DATADIR." << std::endl;
+        std::cerr << args.GetHelpMessage();
         return 1;
     }
-    std::filesystem::path abs_datadir{std::filesystem::absolute(argv[1])};
+
+    std::string chain = args.GetArg("-chain").value_or("main");
+    auto chain_type = BtckChainTypeFromString(chain);
+    if (!chain_type) {
+        std::cerr << "Error: Unknown chain '" << chain << "'. Allowed values: main, test, testnet4, signet, regtest" << std::endl;
+        return 1;
+    }
+
+    std::filesystem::path abs_datadir{std::filesystem::absolute(*args.GetArg("-datadir"))};
     std::filesystem::create_directories(abs_datadir);
 
     btck_LoggingOptions logging_options = {
@@ -156,7 +210,7 @@ int main(int argc, char* argv[])
     Logger logger{std::make_unique<KernelLog>()};
 
     ContextOptions options{};
-    ChainParams params{ChainType::MAINNET};
+    ChainParams params{*chain_type};
     options.SetChainParams(params);
 
     options.SetNotifications(std::make_shared<TestKernelNotifications>());
