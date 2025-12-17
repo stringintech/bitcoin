@@ -47,6 +47,19 @@ std::vector<std::byte> hex_string_to_byte_vec(std::string_view hex)
     return bytes;
 }
 
+std::string byte_span_to_hex_string_reversed(std::span<const std::byte> bytes)
+{
+    std::ostringstream oss;
+
+    // Iterate in reverse order
+    for (auto it = bytes.rbegin(); it != bytes.rend(); ++it) {
+        oss << std::hex << std::setw(2) << std::setfill('0')
+            << static_cast<unsigned int>(static_cast<uint8_t>(*it));
+    }
+
+    return oss.str();
+}
+
 class KernelLog
 {
 public:
@@ -116,9 +129,9 @@ public:
 class TestKernelNotifications : public KernelNotifications
 {
 public:
-    void BlockTipHandler(SynchronizationState, const BlockTreeEntry, double) override
+    void BlockTipHandler(SynchronizationState, BlockTreeEntry entry, double) override
     {
-        std::cout << "Block tip changed" << std::endl;
+        std::cout << "Block tip changed to block with hash: " << byte_span_to_hex_string_reversed(entry.GetHash().ToBytes()) << std::endl;
     }
 
     void ProgressHandler(std::string_view title, int progress_percent, bool resume_possible) override
