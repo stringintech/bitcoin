@@ -36,7 +36,7 @@ FUZZ_TARGET(script_sigcache, .init = initialize_script_sigcache)
     const unsigned int n_in = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
     const CAmount amount = ConsumeMoney(fuzzed_data_provider);
     const bool store = fuzzed_data_provider.ConsumeBool();
-    PrecomputedTransactionData tx_data;
+    PrecomputedTransactionData tx_data{tx, /*spent_outputs=*/{}};
     CachingTransactionSignatureChecker caching_transaction_signature_checker{mutable_transaction ? &tx : nullptr, n_in, amount, store, signature_cache, tx_data};
     if (fuzzed_data_provider.ConsumeBool()) {
         const auto random_bytes = fuzzed_data_provider.ConsumeBytes<unsigned char>(64);

@@ -33,7 +33,7 @@ FUZZ_TARGET(script_interpreter)
                 const std::optional<CMutableTransaction> mtx_precomputed = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider, TX_WITH_WITNESS);
                 if (mtx_precomputed) {
                     const CTransaction tx_precomputed{*mtx_precomputed};
-                    const PrecomputedTransactionData precomputed_transaction_data{tx_precomputed};
+                    const PrecomputedTransactionData precomputed_transaction_data{tx_precomputed, /*spent_outputs=*/{}};
                     n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
                     amount = ConsumeMoney(fuzzed_data_provider);
                     sigversion = fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0});

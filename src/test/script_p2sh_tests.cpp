@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE(sign)
     // Check to make sure signature verification fails if we use the wrong ScriptSig:
     SignatureCache signature_cache{DEFAULT_SIGNATURE_CACHE_BYTES};
     for (int i = 0; i < 8; i++) {
-        PrecomputedTransactionData txdata(txTo[i]);
+        PrecomputedTransactionData txdata{txTo[i], /*spent_outputs=*/{}};
         for (int j = 0; j < 8; j++)
         {
             CScript sigSave = txTo[i].vin[0].scriptSig;

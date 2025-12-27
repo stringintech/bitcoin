@@ -390,13 +390,7 @@ PrecomputedTransactionData PrecomputePSBTData(const PartiallySignedTransaction& 
     for (size_t idx = 0; idx < tx.vin.size(); ++idx) {
         if (!psbt.GetInputUTXO(utxos[idx], idx)) have_all_spent_outputs = false;
     }
-    PrecomputedTransactionData txdata;
-    if (have_all_spent_outputs) {
-        txdata.Init(tx, std::move(utxos), true);
-    } else {
-        txdata.Init(tx, {}, true);
-    }
-    return txdata;
+    return PrecomputedTransactionData{tx, have_all_spent_outputs ? std::move(utxos) : std::vector<CTxOut>{}, /*force=*/true};
 }
 
 PSBTError SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, const PrecomputedTransactionData* txdata, std::optional<int> sighash,  SignatureData* out_sigdata, bool finalize)
