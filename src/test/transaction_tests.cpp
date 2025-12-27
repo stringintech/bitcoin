@@ -211,7 +211,7 @@ BOOST_AUTO_TEST_CASE(tx_valid)
             BOOST_CHECK_MESSAGE(CheckTransaction(tx, state), strTest);
             BOOST_CHECK(state.IsValid());
 
-            PrecomputedTransactionData txdata(tx);
+            PrecomputedTransactionData txdata{tx, /*spent_outputs=*/{}};
             script_verify_flags verify_flags = ParseScriptFlags(test[2].get_str());
 
             // Check that the test gives a valid combination of flags (otherwise VerifyScript will throw). Don't edit the flags.
@@ -301,7 +301,7 @@ BOOST_AUTO_TEST_CASE(tx_invalid)
                 continue;
             }
 
-            PrecomputedTransactionData txdata(tx);
+            PrecomputedTransactionData txdata{tx, /*spent_outputs=*/{}};
             script_verify_flags verify_flags = ParseScriptFlags(test[2].get_str());
 
             // Check that the test gives a valid combination of flags (otherwise VerifyScript will throw). Don't edit the flags.
@@ -532,7 +532,7 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
     CTransaction tx(deserialize, TX_WITH_WITNESS, ssout);
 
     // check all inputs concurrently, with the cache
-    PrecomputedTransactionData txdata(tx);
+    PrecomputedTransactionData txdata(tx, /*spent_outputs=*/{});
     CCheckQueue<CScriptCheck> scriptcheckqueue(/*batch_size=*/128, /*worker_threads_num=*/20);
     CCheckQueueControl<CScriptCheck> control(scriptcheckqueue);
 

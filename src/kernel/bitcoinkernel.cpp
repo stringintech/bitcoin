@@ -633,7 +633,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
 
     const CTransaction& tx{*btck_Transaction::get(tx_to)};
     std::vector<CTxOut> spent_outputs;
-    if (spent_outputs_ != nullptr) {
+    if (spent_outputs_ != nullptr && flags & btck_ScriptVerificationFlags_TAPROOT) {
         assert(spent_outputs_len == tx.vin.size());
         spent_outputs.reserve(spent_outputs_len);
         for (size_t i = 0; i < spent_outputs_len; i++) {
@@ -641,13 +641,9 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
             spent_outputs.push_back(tx_out);
         }
     }
+    PrecomputedTransactionData txdata{tx, std::move(spent_outputs)};
 
     assert(input_index < tx.vin.size());
-    PrecomputedTransactionData txdata{tx};
-
-    if (spent_outputs_ != nullptr && flags & btck_ScriptVerificationFlags_TAPROOT) {
-        txdata.Init(tx, std::move(spent_outputs));
-    }
 
     bool result = VerifyScript(tx.vin[input_index].scriptSig,
                                btck_ScriptPubkey::get(script_pubkey),

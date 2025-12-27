@@ -1014,21 +1014,16 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
     // transaction to avoid rehashing.
     const CTransaction txConst(mtx);
 
-    PrecomputedTransactionData txdata;
     std::vector<CTxOut> spent_outputs;
     for (unsigned int i = 0; i < mtx.vin.size(); ++i) {
         CTxIn& txin = mtx.vin[i];
         auto coin = coins.find(txin.prevout);
         if (coin == coins.end() || coin->second.IsSpent()) {
-            txdata.Init(txConst, /*spent_outputs=*/{}, /*force=*/true);
             break;
-        } else {
-            spent_outputs.emplace_back(coin->second.out.nValue, coin->second.out.scriptPubKey);
         }
+        spent_outputs.emplace_back(coin->second.out.nValue, coin->second.out.scriptPubKey);
     }
-    if (spent_outputs.size() == mtx.vin.size()) {
-        txdata.Init(txConst, std::move(spent_outputs), true);
-    }
+    PrecomputedTransactionData txdata{txConst, spent_outputs.size() == mtx.vin.size() ? std::move(spent_outputs) : std::vector<CTxOut>{}, /*force=*/true};
 
     // Sign what we can:
     for (unsigned int i = 0; i < mtx.vin.size(); ++i) {
