@@ -1402,10 +1402,11 @@ uint256 GetSpentScriptsSHA256(const std::vector<CTxOut>& outputs_spent)
 template <class T>
 PrecomputedTransactionData::PrecomputedTransactionData(const T& txTo, std::vector<CTxOut>&& spent_outputs, bool force)
 {
+    bool spent_outputs_ready = false;
     m_spent_outputs = std::move(spent_outputs);
     if (!m_spent_outputs.empty()) {
         assert(m_spent_outputs.size() == txTo.vin.size());
-        m_spent_outputs_ready = true;
+        spent_outputs_ready = true;
     }
 
     // Determine which precomputation-impacting features this transaction uses.
@@ -1413,7 +1414,7 @@ PrecomputedTransactionData::PrecomputedTransactionData(const T& txTo, std::vecto
     bool uses_bip341_taproot = force;
     for (size_t inpos = 0; inpos < txTo.vin.size() && !(uses_bip143_segwit && uses_bip341_taproot); ++inpos) {
         if (!txTo.vin[inpos].scriptWitness.IsNull()) {
-            if (m_spent_outputs_ready && m_spent_outputs[inpos].scriptPubKey.size() == 2 + WITNESS_V1_TAPROOT_SIZE &&
+            if (spent_outputs_ready && m_spent_outputs[inpos].scriptPubKey.size() == 2 + WITNESS_V1_TAPROOT_SIZE &&
                 m_spent_outputs[inpos].scriptPubKey[0] == OP_1) {
                 // Treat every witness-bearing spend with 34-byte scriptPubKey that starts with OP_1 as a Taproot
                 // spend. This only works if spent_outputs was provided as well, but if it wasn't, actual validation
@@ -1442,7 +1443,7 @@ PrecomputedTransactionData::PrecomputedTransactionData(const T& txTo, std::vecto
         hashOutputs = SHA256Uint256(m_outputs_single_hash);
         m_bip143_segwit_ready = true;
     }
-    if (uses_bip341_taproot && m_spent_outputs_ready) {
+    if (uses_bip341_taproot) {
         m_spent_amounts_single_hash = GetSpentAmountsSHA256(m_spent_outputs);
         m_spent_scripts_single_hash = GetSpentScriptsSHA256(m_spent_outputs);
         m_bip341_taproot_ready = true;
@@ -1490,7 +1491,7 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         assert(false);
     }
     assert(in_pos < tx_to.vin.size());
-    if (!(cache.m_bip341_taproot_ready && cache.m_spent_outputs_ready)) {
+    if (!cache.m_bip341_taproot_ready) {
         return HandleMissingData(mdb);
     }
 

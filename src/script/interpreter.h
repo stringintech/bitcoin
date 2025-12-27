@@ -178,8 +178,6 @@ struct PrecomputedTransactionData
     bool m_bip143_segwit_ready = false;
 
     std::vector<CTxOut> m_spent_outputs;
-    //! Whether m_spent_outputs is initialized.
-    bool m_spent_outputs_ready = false;
 
     /** Construct PrecomputedTransactionData with transaction data.
      *
