@@ -68,7 +68,7 @@ std::optional<uint256> MutableTransactionSignatureCreator::ComputeSchnorrSignatu
     // BIP341/BIP342 signing needs lots of precomputed transaction data. While some
     // (non-SIGHASH_DEFAULT) sighash modes exist that can work with just some subset
     // of data present, for now, only support signing when everything is provided.
-    if (!m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return std::nullopt;
+    if (!m_txdata || !m_txdata->m_bip341_taproot_ready) return std::nullopt;
 
     ScriptExecutionData execdata;
     execdata.m_annex_init = true;
