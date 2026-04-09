@@ -388,8 +388,8 @@ static RPCHelpMan generateblock()
         block.vtx.insert(block.vtx.end(), txs.begin(), txs.end());
         RegenerateCommitments(block, chainman);
 
-        if (BlockValidationState state{TestBlockValidity(chainman.ActiveChainstate(), block, /*check_pow=*/false, /*check_merkle_root=*/false)}; !state.IsValid()) {
-            throw JSONRPCError(RPC_VERIFY_ERROR, strprintf("TestBlockValidity failed: %s", state.ToString()));
+        if (const auto res{TestBlockValidity(chainman.ActiveChainstate(), block, /*check_pow=*/false, /*check_merkle_root=*/false)}; !res || res->IsInvalid()) {
+            throw JSONRPCError(RPC_VERIFY_ERROR, strprintf("TestBlockValidity failed: %s", res ? res->ToString() : res.error()));
         }
     }
 
@@ -588,8 +588,6 @@ static UniValue BIP22ValidationResult(const BlockValidationState& state)
     if (state.IsValid())
         return UniValue::VNULL;
 
-    if (state.IsError())
-        throw JSONRPCError(RPC_VERIFY_ERROR, state.ToString());
     if (state.IsInvalid())
     {
         std::string strRejectReason = state.GetRejectReason();
@@ -747,7 +745,9 @@ static RPCHelpMan getblocktemplate()
                 return "duplicate-inconclusive";
             }
 
-            return BIP22ValidationResult(TestBlockValidity(chainman.ActiveChainstate(), block, /*check_pow=*/false, /*check_merkle_root=*/true));
+            const auto res{TestBlockValidity(chainman.ActiveChainstate(), block, /*check_pow=*/false, /*check_merkle_root=*/true)};
+            if (!res) throw JSONRPCError(RPC_VERIFY_ERROR, res.error());
+            return BIP22ValidationResult(res.value());
         }
 
         const UniValue& aClientRules = oparam.find_value("rules");
@@ -1125,9 +1125,6 @@ static RPCHelpMan submitheader()
 
     BlockValidationState state{chainman.ProcessNewBlockHeaders({{h}}, /*min_pow_checked=*/true)};
     if (state.IsValid()) return UniValue::VNULL;
-    if (state.IsError()) {
-        throw JSONRPCError(RPC_VERIFY_ERROR, state.ToString());
-    }
     throw JSONRPCError(RPC_VERIFY_ERROR, state.GetRejectReason());
 },
     };

@@ -1651,11 +1651,8 @@ static RPCHelpMan preciousblock()
         }
     }
 
-    BlockValidationState state;
-    chainman.ActiveChainstate().PreciousBlock(state, pblockindex);
-
-    if (!state.IsValid()) {
-        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    if (const auto res{chainman.ActiveChainstate().PreciousBlock(pblockindex)}; !res) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, res.error());
     }
 
     return UniValue::VNULL;
@@ -1664,7 +1661,6 @@ static RPCHelpMan preciousblock()
 }
 
 void InvalidateBlock(ChainstateManager& chainman, const uint256 block_hash) {
-    BlockValidationState state;
     CBlockIndex* pblockindex;
     {
         LOCK(chainman.GetMutex());
@@ -1673,14 +1669,16 @@ void InvalidateBlock(ChainstateManager& chainman, const uint256 block_hash) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
         }
     }
-    chainman.ActiveChainstate().InvalidateBlock(state, pblockindex);
-
-    if (state.IsValid()) {
-        chainman.ActiveChainstate().ActivateBestChain(state);
+    const auto invalidate_res{chainman.ActiveChainstate().InvalidateBlock(pblockindex)};
+    // Always attempt to activate the best chain even if InvalidateBlock failed,
+    // since it may have partially disconnected blocks that need a valid tip.
+    if (const auto res{chainman.ActiveChainstate().ActivateBestChain()}; !res) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, res.error());
     }
-
-    if (!state.IsValid()) {
-        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    if (!invalidate_res) {
+        // RPC_MISC_ERROR because failures can be from concurrency issues or
+        // invalid state, not just database errors.
+        throw JSONRPCError(RPC_MISC_ERROR, invalidate_res.error());
     }
 }
 
@@ -1721,11 +1719,8 @@ void ReconsiderBlock(ChainstateManager& chainman, uint256 block_hash) {
         chainman.RecalculateBestHeader();
     }
 
-    BlockValidationState state;
-    chainman.ActiveChainstate().ActivateBestChain(state);
-
-    if (!state.IsValid()) {
-        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
+    if (const auto res{chainman.ActiveChainstate().ActivateBestChain()}; !res) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, res.error());
     }
 }
 
@@ -3005,10 +3000,11 @@ public:
 class TemporaryRollback
 {
     ChainstateManager& m_chainman;
-    const CBlockIndex& m_invalidate_index;
+    CBlockIndex& m_invalidate_index;
 public:
-    TemporaryRollback(ChainstateManager& chainman, const CBlockIndex& index) : m_chainman(chainman), m_invalidate_index(index) {
-        InvalidateBlock(m_chainman, m_invalidate_index.GetBlockHash());
+    TemporaryRollback(ChainstateManager& chainman, CBlockIndex& index) : m_chainman(chainman), m_invalidate_index(index) {
+        m_chainman.ActiveChainstate().InvalidateBlock(&m_invalidate_index);
+        m_chainman.ActiveChainstate().ActivateBestChain();
     };
     ~TemporaryRollback() {
         ReconsiderBlock(m_chainman, m_invalidate_index.GetBlockHash());
@@ -3100,7 +3096,7 @@ static RPCHelpMan dumptxoutset()
     }
 
     CConnman& connman = EnsureConnman(node);
-    const CBlockIndex* invalidate_index{nullptr};
+    CBlockIndex* invalidate_index{nullptr};
     std::optional<NetworkDisable> disable_network;
     std::optional<TemporaryRollback> temporary_rollback;
 

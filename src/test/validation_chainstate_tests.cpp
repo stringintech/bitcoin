@@ -122,12 +122,12 @@ BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)
         bool checked = CheckBlock(*pblockone, state, chainparams.GetConsensus());
         BOOST_CHECK(checked);
         bool accepted = chainman.AcceptBlock(
-            pblockone, state, &pindex, true, nullptr, &newblock, true);
+            pblockone, &pindex, true, nullptr, &newblock, true).has_value();
         BOOST_CHECK(accepted);
     }
 
     // UpdateTip is called here
-    bool block_added = background_cs.ActivateBestChain(state, pblockone);
+    bool block_added = background_cs.ActivateBestChain(pblockone).has_value();
 
     // Ensure tip is as expected
     BOOST_CHECK_EQUAL(background_cs.m_chain.Tip()->GetBlockHash(), pblockone->GetHash());

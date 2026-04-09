@@ -904,8 +904,7 @@ btck_ValidationMode btck_block_validation_state_get_validation_mode(const btck_B
 {
     auto& block_validation_state = btck_BlockValidationState::get(block_validation_state_);
     if (block_validation_state.IsValid()) return btck_ValidationMode_VALID;
-    if (block_validation_state.IsInvalid()) return btck_ValidationMode_INVALID;
-    return btck_ValidationMode_INTERNAL_ERROR;
+    return btck_ValidationMode_INVALID;
 }
 
 btck_BlockValidationResult btck_block_validation_state_get_block_validation_result(const btck_BlockValidationState* block_validation_state_)

@@ -32,6 +32,7 @@
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/hasher.h>
+#include <util/expected.h>
 #include <util/result.h>
 #include <util/time.h>
 #include <util/translation.h>
@@ -100,7 +101,7 @@ extern const std::vector<std::string> CHECKLEVEL_DOC;
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams);
 
-bool FatalError(kernel::Notifications& notifications, BlockValidationState& state, const bilingual_str& message);
+util::Unexpected<std::string> FatalError(kernel::Notifications& notifications, const bilingual_str& message);
 
 /** Prune block files up to a given height */
 void PruneBlockFilesManual(Chainstate& active_chainstate, int nManualPruneHeight);
@@ -400,14 +401,15 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
  *                          is always checked
  * @param[in]   check_merkle_root check the merkle root
  *
- * @return Valid or Invalid state. This doesn't currently return an Error state,
- *         and shouldn't unless there is something wrong with the existing
- *         chainstate. (This is different from functions like AcceptBlock which
- *         can fail trying to save new data.)
+ * @return The BlockValidationState if the block was processed (check IsValid/IsInvalid
+ *         on result). This doesn't currently return an error string, and shouldn't
+ *         unless there is something wrong with the existing chainstate. (This is
+ *         different from functions like AcceptBlock which can fail trying to save
+ *         new data.)
  *
  * For signets the challenge verification is skipped when check_pow is false.
  */
-BlockValidationState TestBlockValidity(
+util::Expected<BlockValidationState, std::string> TestBlockValidity(
     Chainstate& chainstate,
     const CBlock& block,
     bool check_pow,
@@ -733,10 +735,9 @@ public:
      * If FlushStateMode::NONE is used, then FlushStateToDisk(...) won't do anything
      * besides checking if we need to prune.
      *
-     * @returns true unless a system error occurred
+     * @returns an error string if a system error occurred
      */
-    bool FlushStateToDisk(
-        BlockValidationState& state,
+    util::Expected<void, std::string> FlushStateToDisk(
         FlushStateMode mode,
         int nManualPruneHeight = 0);
 
@@ -768,32 +769,30 @@ public:
      *
      * @returns true unless a system error occurred
      */
-    bool ActivateBestChain(
-        BlockValidationState& state,
-        std::shared_ptr<const CBlock> pblock = nullptr)
+    util::Expected<void, std::string> ActivateBestChain(std::shared_ptr<const CBlock> pblock = nullptr)
         EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
         LOCKS_EXCLUDED(::cs_main);
 
     // Block (dis)connection on a given view:
     DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view)
         EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
-    bool ConnectBlock(const CBlock& block, BlockValidationState& state, CBlockIndex* pindex,
+    util::Expected<BlockValidationState, std::string> ConnectBlock(const CBlock& block, CBlockIndex* pindex,
                       CCoinsViewCache& view, bool fJustCheck = false) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     // Apply the effects of a block disconnection on the UTXO set.
-    bool DisconnectTip(BlockValidationState& state, DisconnectedBlockTransactions* disconnectpool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
+    util::Expected<void, std::string> DisconnectTip(DisconnectedBlockTransactions* disconnectpool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
 
     // Manual block validity manipulation:
     /** Mark a block as precious and reorganize.
      *
      * May not be called in a validationinterface callback.
      */
-    bool PreciousBlock(BlockValidationState& state, CBlockIndex* pindex)
+    util::Expected<void, std::string> PreciousBlock(CBlockIndex* pindex)
         EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
         LOCKS_EXCLUDED(::cs_main);
 
     /** Mark a block as invalid. */
-    bool InvalidateBlock(BlockValidationState& state, CBlockIndex* pindex)
+    util::Expected<void, std::string> InvalidateBlock(CBlockIndex* pindex)
         EXCLUSIVE_LOCKS_REQUIRED(!m_chainstate_mutex)
         LOCKS_EXCLUDED(::cs_main);
 
@@ -846,9 +845,8 @@ public:
     std::pair<int, int> GetPruneRange(int last_height_can_prune) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
 protected:
-    bool ActivateBestChainStep(BlockValidationState& state, CBlockIndex* pindexMostWork, const std::shared_ptr<const CBlock>& pblock, bool& fInvalidFound, ConnectTrace& connectTrace) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
-    bool ConnectTip(
-        BlockValidationState& state,
+    util::Expected<void, std::string> ActivateBestChainStep(CBlockIndex* pindexMostWork, const std::shared_ptr<const CBlock>& pblock, bool& fInvalidFound, ConnectTrace& connectTrace) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
+    util::Expected<BlockValidationState, std::string> ConnectTip(
         CBlockIndex* pindexNew,
         std::shared_ptr<const CBlock> block_to_connect,
         ConnectTrace& connectTrace,
@@ -1275,7 +1273,6 @@ public:
      * @param[in]   min_pow_checked True if proof-of-work anti-DoS checks have
      *                              been done by caller for headers chain
      *
-     * @param[out]  state       The state of the block validation.
      * @param[out]  ppindex     Optional return parameter to get the
      *                          CBlockIndex pointer for this block.
      * @param[out]  fNewBlock   Optional return parameter to indicate if the
@@ -1283,7 +1280,7 @@ public:
      *
      * @returns   False if the block or header is invalid, or if saving to disk fails (likely a fatal error); true otherwise.
      */
-    bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockValidationState& state, CBlockIndex** ppindex, bool fRequested, const FlatFilePos* dbp, bool* fNewBlock, bool min_pow_checked) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    util::Expected<BlockValidationState, std::string> AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CBlockIndex** ppindex, bool fRequested, const FlatFilePos* dbp, bool* fNewBlock, bool min_pow_checked) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     void ReceivedBlockTransactions(const CBlock& block, CBlockIndex* pindexNew, const FlatFilePos& pos) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
