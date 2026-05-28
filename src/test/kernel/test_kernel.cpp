@@ -684,6 +684,7 @@ BOOST_AUTO_TEST_CASE(btck_block_header_tests)
     CheckHandle(header_0, header_1);
 
     // Test error handling for invalid data
+    BOOST_CHECK_THROW(BlockHeader{hex_string_to_byte_vec(std::string(162, '0'))}, std::runtime_error);
     BOOST_CHECK_THROW(BlockHeader{hex_string_to_byte_vec("00")}, std::runtime_error);
     BOOST_CHECK_THROW(BlockHeader{hex_string_to_byte_vec("")}, std::runtime_error);
 
