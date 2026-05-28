@@ -807,8 +807,8 @@ public:
 class BlockHeader : public Handle<btck_BlockHeader, btck_block_header_copy, btck_block_header_destroy>, public BlockHeaderApi<BlockHeader>
 {
 public:
-    explicit BlockHeader(std::span<const std::byte> raw_header)
-        : Handle{btck_block_header_create(reinterpret_cast<const unsigned char*>(raw_header.data()), raw_header.size())} {}
+    explicit BlockHeader(std::span<const std::byte, 80> raw_header)
+        : Handle{btck_block_header_create(reinterpret_cast<const unsigned char*>(raw_header.data()))} {}
 
     BlockHeader(const BlockHeaderView& view)
         : Handle{view} {}

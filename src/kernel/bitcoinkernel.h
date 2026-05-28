@@ -1864,12 +1864,11 @@ BITCOINKERNEL_API void btck_block_hash_destroy(btck_BlockHash* block_hash);
 /**
  * @brief Create a btck_BlockHeader from serialized data.
  *
- * @param[in] raw_block_header      Non-null, serialized header data (80 bytes)
- * @param[in] raw_block_header_len  Length of serialized header (must be 80)
- * @return                          btck_BlockHeader, or null on error.
+ * @param[in] raw_block_header  Non-null serialized block header.
+ * @return                      The allocated btck_BlockHeader, or null on error.
  */
 BITCOINKERNEL_API btck_BlockHeader* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_header_create(
-    const void* raw_block_header, size_t raw_block_header_len);
+    const unsigned char raw_block_header[80]) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * @brief Copy a btck_BlockHeader.
