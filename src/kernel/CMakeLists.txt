@@ -119,7 +119,6 @@ if(bitcoinkernel_type STREQUAL "STATIC_LIBRARY")
   target_compile_definitions(bitcoinkernel PUBLIC BITCOINKERNEL_STATIC)
 endif()
 
-option(ENABLE_SCRIPT_TRACE "Enable script execution trace hooks" OFF)
 if(ENABLE_SCRIPT_TRACE)
   target_sources(bitcoinkernel PRIVATE ../script/trace.cpp)
   target_compile_definitions(bitcoinkernel PRIVATE ENABLE_SCRIPT_TRACE)

@@ -85,6 +85,10 @@ target_link_libraries(bitcoin_consensus
     bitcoin_crypto
     secp256k1
 )
+if(ENABLE_SCRIPT_TRACE)
+  target_sources(bitcoin_consensus PRIVATE script/trace.cpp)
+  target_compile_definitions(bitcoin_consensus PUBLIC ENABLE_SCRIPT_TRACE)
+endif()
 
 if(WITH_ZMQ)
   add_subdirectory(zmq)

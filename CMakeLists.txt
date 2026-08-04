@@ -123,6 +123,7 @@ cmake_dependent_option(ENABLE_IPC "Build multiprocess bitcoin-node and bitcoin-g
 cmake_dependent_option(WITH_EXTERNAL_LIBMULTIPROCESS "Build with external libmultiprocess library instead of with local git subtree when ENABLE_IPC is enabled. This is not normally recommended, but can be useful for developing libmultiprocess itself." OFF "ENABLE_IPC" OFF)
 option(WITH_EMBEDDED_ASMAP "Embed default ASMap data." ON)
 option(WITH_USDT "Enable tracepoints for Userspace, Statically Defined Tracing." OFF)
+option(ENABLE_SCRIPT_TRACE "Enable script execution trace hooks" OFF)
 
 cmake_dependent_option(WITH_QRENCODE "Enable QR code support." ON "BUILD_GUI" OFF)
 cmake_dependent_option(WITH_DBUS "Enable DBus support." ON "NOT CMAKE_SYSTEM_NAME MATCHES \"(Windows|Darwin)\" AND BUILD_GUI" OFF)
