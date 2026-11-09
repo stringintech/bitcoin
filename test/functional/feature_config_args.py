@@ -21,9 +21,6 @@ class ConfArgsTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
-        # Prune to prevent disk space warning on CI systems with limited space,
-        # when using networks other than regtest.
-        self.extra_args = [["-prune=550"]]
         self.supports_cli = False
         self.wallet_names = []
         self.disable_autoconnect = False
@@ -513,6 +510,7 @@ class ConfArgsTest(BitcoinTestFramework):
         t3_warning_log = "Warning: Support for testnet3 is deprecated and will be removed in an upcoming release. Consider switching to testnet4."
 
         self.log.debug("Testnet3 node will log the deprecation warning")
+        self.nodes[0].ignore_disk_space_warning = True
         self.nodes[0].chain = 'testnet3'
         self.nodes[0].replace_in_config([('regtest=', 'testnet='), ('[regtest]', '[test]')])
         with self.nodes[0].assert_debug_log([t3_warning_log]):

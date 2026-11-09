@@ -19,8 +19,9 @@ class WalletCrossChain(BitcoinTestFramework):
 
         # Switch node 1 to any network different from regtest before starting it.
         self.nodes[1].chain = 'signet'
-        # Disable network sync and prevent disk space warning on low resource CI
-        self.nodes[1].extra_args = ['-maxconnections=0', '-prune=550']
+        # Disable network sync
+        self.nodes[1].extra_args = ['-maxconnections=0']
+        self.nodes[1].ignore_disk_space_warning = True
         self.nodes[1].replace_in_config([('regtest=', 'signet='), ('[regtest]', '[signet]')])
         self.start_nodes()
 

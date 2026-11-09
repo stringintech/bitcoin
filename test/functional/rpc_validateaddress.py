@@ -179,7 +179,6 @@ class ValidateAddressMainTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.chain = "main"
         self.num_nodes = 1
-        self.extra_args = [["-prune=899"]] * self.num_nodes
 
     def check_valid(self, addr, spk):
         info = self.nodes[0].validateaddress(addr)
@@ -201,6 +200,7 @@ class ValidateAddressMainTest(BitcoinTestFramework):
             self.check_valid(addr, spk)
 
     def run_test(self):
+        self.nodes[0].ignore_disk_space_warning = True
         self.test_validateaddress()
 
 

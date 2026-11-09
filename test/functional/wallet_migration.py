@@ -1666,9 +1666,10 @@ class WalletMigrationTest(BitcoinTestFramework):
         self.log.info("Test that a failed loading of the wallet at the end of migration restores the backup")
         self.stop_node(self.old_node.index)
         self.old_node.chain = "signet"
+        self.old_node.ignore_disk_space_warning = True
         self.old_node.replace_in_config([("regtest=", "signet="), ("[regtest]", "[signet]")])
-        # Disable network sync and prevent disk space warning on small (tmp)fs
-        self.start_node(self.old_node.index, extra_args=self.old_node.extra_args + ["-maxconnections=0", "-prune=550"])
+        # Disable network sync
+        self.start_node(self.old_node.index, extra_args=self.old_node.extra_args + ["-maxconnections=0"])
 
         wallet_name = "failed_load_after_migrate"
         self.create_legacy_wallet(wallet_name)

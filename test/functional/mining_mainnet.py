@@ -76,9 +76,7 @@ class MiningMainnetTest(BitcoinTestFramework):
 
     def run_test(self):
         node = self.nodes[0]
-        # Clear disk space warning
-        node.stderr.seek(0)
-        node.stderr.truncate()
+        node.ignore_disk_space_warning = True
         self.log.info("Load alternative mainnet blocks")
         path = os.path.join(os.path.dirname(os.path.realpath(__file__)), self.options.datafile)
         prev_hash = node.getbestblockhash()

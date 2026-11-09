@@ -121,6 +121,11 @@ class TestNode():
         self.stdout_dir = self.datadir_path / "stdout"
         self.stderr_dir = self.datadir_path / "stderr"
         self.chain = chain
+        # On chains other than regtest, startup warns when the data may not fit on
+        # disk. Whether it fires depends on the free space of the machine running the
+        # test, so nodes on those chains set this to drop the warning before comparing
+        # against `expected_stderr` when the node stops.
+        self.ignore_disk_space_warning = False
         self.rpchost = rpchost
         self.rpc_timeout = timewait  # Already multiplied by timeout_factor
         self.timeout_factor = timeout_factor
@@ -544,7 +549,11 @@ class TestNode():
             f"Node returned unexpected exit code ({return_code}) vs ({expected_ret_code}) when stopping")
         # Check that stderr is as expected
         self.stderr.seek(0)
-        stderr = self.stderr.read().decode('utf-8').strip()
+        stderr = self.stderr.read().decode('utf-8')
+        if self.ignore_disk_space_warning:
+            stderr = "\n".join(line for line in stderr.splitlines()
+                               if not re.fullmatch(r"Warning: Disk space for .* may not accommodate .*", line))
+        stderr = stderr.strip()
         if isinstance(expected_stderr, re.Pattern):
             if not expected_stderr.search(stderr):
                 raise AssertionError(f"Unexpected stderr {stderr!r} does not contain {expected_stderr.pattern!r}")
