@@ -139,4 +139,17 @@ BOOST_AUTO_TEST_CASE(rename)
     fs::remove(path2);
 }
 
+BOOST_AUTO_TEST_CASE(on_same_volume)
+{
+    const fs::path tmpfolder{m_args.GetDataDirBase()};
+    const fs::path subdir{tmpfolder / "subdir"};
+    fs::create_directories(subdir);
+
+    BOOST_CHECK(OnSameVolume(tmpfolder, tmpfolder));
+    BOOST_CHECK(OnSameVolume(tmpfolder, subdir));
+    BOOST_CHECK_THROW(OnSameVolume(tmpfolder, tmpfolder / "nonexistent"), fs::filesystem_error);
+
+    fs::remove(subdir);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

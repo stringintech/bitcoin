@@ -29,6 +29,7 @@
 #ifndef WIN32
 #include <fcntl.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #else
@@ -334,6 +335,40 @@ bool IsDirWritable(const fs::path& dir_path)
         return true;
     }
     return false;
+}
+
+namespace {
+uint64_t GetVolumeId(const fs::path& path)
+{
+#ifdef WIN32
+    // FILE_FLAG_BACKUP_SEMANTICS is required to open a directory handle.
+    HANDLE handle{CreateFileW(path.wstring().c_str(), FILE_READ_ATTRIBUTES,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
+    if (handle == INVALID_HANDLE_VALUE) {
+        throw fs::filesystem_error("CreateFileW failed", path, std::error_code(GetLastError(), std::system_category()));
+    }
+    BY_HANDLE_FILE_INFORMATION info;
+    const bool ok{GetFileInformationByHandle(handle, &info) != 0};
+    const DWORD err{GetLastError()};
+    CloseHandle(handle);
+    if (!ok) {
+        throw fs::filesystem_error("GetFileInformationByHandle failed", path, std::error_code(err, std::system_category()));
+    }
+    return info.dwVolumeSerialNumber;
+#else
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) {
+        throw fs::filesystem_error("stat failed", path, std::error_code(errno, std::generic_category()));
+    }
+    return static_cast<uint64_t>(st.st_dev);
+#endif
+}
+} // namespace
+
+bool OnSameVolume(const fs::path& a, const fs::path& b)
+{
+    return GetVolumeId(a) == GetVolumeId(b);
 }
 
 #ifdef __APPLE__

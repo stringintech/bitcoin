@@ -47,6 +47,17 @@ void DirectoryCommit(const fs::path& dirname);
 bool TruncateFile(FILE* file, uint64_t length);
 
 /**
+ * Check whether two existing paths reside on the same filesystem volume, by
+ * comparing the device ID (POSIX) or the volume serial number (Windows).
+ *
+ * Note: pooled storage (APFS volumes in one container, btrfs subvolumes, ZFS
+ * datasets) reports distinct volumes that still share the same free space.
+ *
+ * @throws fs::filesystem_error if either path cannot be queried
+ */
+bool OnSameVolume(const fs::path& a, const fs::path& b);
+
+/**
  * 64-bit-clean file positioning.
  *
  * The wrapper is necessary for Windows, because `long` is only 32 bits there,
