@@ -2072,22 +2072,59 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     int chain_active_height = WITH_LOCK(cs_main, return chainman.ActiveChain().Height());
 
-    // On first startup, warn on low block storage space
-    if (!do_reindex && !do_reindex_chainstate && chain_active_height <= 1) {
-        uint64_t assumed_chain_bytes{chainparams.AssumedBlockchainSize() * 1_GiB};
-        uint64_t additional_bytes_needed{
-            chainman.m_blockman.IsPruneMode() ?
+    // On first startup, warn on low storage space for the block files and chainstate
+    if (chain_active_height <= 1) {
+        const fs::path data_dir{args.GetDataDirNet()};
+        const fs::path blocks_dir{args.GetBlocksDirPath()};
+        const bool is_prune_mode{chainman.m_blockman.IsPruneMode()};
+        const uint64_t assumed_chain_bytes{chainparams.AssumedBlockchainSize() * 1_GiB};
+        const uint64_t assumed_chainstate_bytes{chainparams.AssumedChainStateSize() * 1_GiB};
+
+        auto check_chainstate_space{[&] {
+            if (!CheckDiskSpace(data_dir, assumed_chainstate_bytes)) {
+                InitWarning(strprintf(_(
+                        "Disk space for %s may not accommodate the chainstate. " \
+                        "Approximately %u GiB of data will be stored in this directory."
+                    ),
+                    fs::quoted(fs::PathToString(data_dir)),
+                    CeilDiv(assumed_chainstate_bytes, 1_GiB)
+                ));
+            }
+        }};
+
+        if (do_reindex || do_reindex_chainstate) {
+            // A reindex wipes the chainstate (but keeps or re-fetches the block
+            // files), so it only needs room for the chainstate to be rebuilt.
+            check_chainstate_space();
+        } else if (OnSameVolume(data_dir, blocks_dir)) {
+            // The assumed blockchain size carries enough headroom to also cover the
+            // chainstate, but the prune target only bounds the block files.
+            const uint64_t bytes_needed{is_prune_mode ?
+                std::min(chainman.m_blockman.GetPruneTarget() + assumed_chainstate_bytes, assumed_chain_bytes) :
+                assumed_chain_bytes};
+            if (!CheckDiskSpace(data_dir, bytes_needed)) {
+                InitWarning(strprintf(_(
+                        "Disk space for %s may not accommodate the block and chainstate files. " \
+                        "Approximately %u GiB of data will be stored on this volume."
+                    ),
+                    fs::quoted(fs::PathToString(data_dir)),
+                    CeilDiv(bytes_needed, 1_GiB)
+                ));
+            }
+        } else {
+            const uint64_t block_bytes_needed{is_prune_mode ?
                 std::min(chainman.m_blockman.GetPruneTarget(), assumed_chain_bytes) :
                 assumed_chain_bytes};
-
-        if (!CheckDiskSpace(args.GetBlocksDirPath(), additional_bytes_needed)) {
-            InitWarning(strprintf(_(
-                    "Disk space for %s may not accommodate the block files. " \
-                    "Approximately %u GiB of data will be stored in this directory."
-                ),
-                fs::quoted(fs::PathToString(args.GetBlocksDirPath())),
-                CeilDiv(additional_bytes_needed, 1_GiB)
-            ));
+            if (!CheckDiskSpace(blocks_dir, block_bytes_needed)) {
+                InitWarning(strprintf(_(
+                        "Disk space for %s may not accommodate the block files. " \
+                        "Approximately %u GiB of data will be stored in this directory."
+                    ),
+                    fs::quoted(fs::PathToString(blocks_dir)),
+                    CeilDiv(block_bytes_needed, 1_GiB)
+                ));
+            }
+            check_chainstate_space();
         }
     }
 
