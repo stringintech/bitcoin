@@ -546,7 +546,7 @@ uint32_t CoinsStore::ApplyConfirmed(std::vector<Change>&& changes, int height, C
     uint32_t conflicts{0};
     std::vector<const Change*> misses;
     VisitShards(shard_of, [&](Shard& shard, std::span<const uint32_t> items) EXCLUSIVE_LOCKS_REQUIRED(shard.mutex) {
-        shard.map.PrefetchAll(hashes, items);
+        shard.map.PrefetchAll(hashes, items, [&](uint32_t i) { return changes[i].coin->IsSpent(); });
         for (const uint32_t i : items) {
             const Change& change{changes[i]};
             const COutPoint& outpoint{*change.outpoint};
@@ -745,7 +745,7 @@ std::vector<std::pair<COutPoint, Coin>> CoinsStore::Fetch(std::vector<COutPoint>
     std::vector<std::pair<COutPoint, Coin>> found;
     found.reserve(outpoints.size());
     VisitShards(shard_of, [&](Shard& shard, std::span<const uint32_t> items) EXCLUSIVE_LOCKS_REQUIRED(shard.mutex) {
-        shard.map.PrefetchAll(hashes, items);
+        shard.map.PrefetchAll(hashes, items, [](uint32_t) { return true; });
         for (const uint32_t i : items) {
             const COutPoint& outpoint{outpoints[i]};
             const auto it{shard.map.find(outpoint, hashes[i])};
@@ -769,7 +769,8 @@ void CoinsStore::MayHave(std::span<const COutPoint> outpoints, std::vector<uint8
         hashes.push_back(KeyHash(outpoint));
     }
     VisitShards(shard_of, [&](Shard& shard, std::span<const uint32_t> items) EXCLUSIVE_LOCKS_REQUIRED(shard.mutex) {
-        shard.map.PrefetchAll(hashes, items);
+        // Whether there is an entry, not what it holds: the keys and the chain links are asked for, not the coins.
+        shard.map.PrefetchAll(hashes, items, [](uint32_t) { return false; });
         for (const uint32_t i : items) {
             if (shard.map.find(outpoints[i], hashes[i]) != shard.map.end()) may[i] = 1;
         }
