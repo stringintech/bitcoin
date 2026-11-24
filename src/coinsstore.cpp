@@ -258,6 +258,13 @@ void CoinsStore::Detach(Shard& shard, Node& node) const
     entry.next = nullptr;
 }
 
+void CoinsStore::PrefetchDetach(const Shard& shard, const Node& node) const
+{
+    AssertLockHeld(shard.mutex);
+    Map::PrefetchLinks(node);
+    if (node.second.list == LIST_DIRTY) Map::PrefetchWrite(shard.dirty_spans.data() + SpanOf(node.second.height));
+}
+
 void CoinsStore::Attach(Shard& shard, Node& node) const
 {
     AssertLockHeld(shard.mutex);
@@ -547,6 +554,11 @@ uint32_t CoinsStore::ApplyConfirmed(std::vector<Change>&& changes, int height, C
     std::vector<const Change*> misses;
     VisitShards(shard_of, [&](Shard& shard, std::span<const uint32_t> items) EXCLUSIVE_LOCKS_REQUIRED(shard.mutex) {
         shard.map.PrefetchAll(hashes, items, [&](uint32_t i) { return changes[i].coin->IsSpent(); });
+        // A spend's list neighbours, asked for once the entries are found.
+        for (const uint32_t i : items) {
+            if (!changes[i].coin->IsSpent()) continue;
+            if (const auto it{shard.map.find(*changes[i].outpoint, hashes[i])}; it != shard.map.end()) PrefetchDetach(shard, *it);
+        }
         for (const uint32_t i : items) {
             const Change& change{changes[i]};
             const COutPoint& outpoint{*change.outpoint};
