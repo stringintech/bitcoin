@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -2058,6 +2059,21 @@ BOOST_AUTO_TEST_CASE(block_apply_view_takes_the_missed_coins_of_several_inputs_f
     for (const COutPoint& outpoint : outpoints) BOOST_CHECK(!store.HaveCoin(outpoint));
     store.Sync();
     for (const COutPoint& outpoint : outpoints) BOOST_CHECK(!db.HaveCoin(outpoint));
+}
+
+//! A transaction's outputs are placed in salted groups of sixteen: within a group they lie in neighbouring
+//! buckets, and indices chosen far apart do not meet in one bucket, whatever the table's size.
+BOOST_AUTO_TEST_CASE(output_indices_choose_no_bucket)
+{
+    const Txid txid{Txid::FromUint256(m_rng.rand256())};
+    const uint64_t first{CoinsStore::KeyHashForTest(COutPoint{txid, 0})};
+    for (uint32_t n{1}; n < 16; ++n) BOOST_CHECK_EQUAL(CoinsStore::KeyHashForTest(COutPoint{txid, n}), first + n);
+    // 256 outputs 256 indices apart, in a table of 256 buckets: under the txid's hash plus the index all of them
+    // would share one bucket. Salted, they spread like random keys (about 162 distinct buckets).
+    constexpr uint64_t BUCKETS{256};
+    std::set<uint64_t> buckets;
+    for (uint32_t k{0}; k < BUCKETS; ++k) buckets.insert(CoinsStore::KeyHashForTest(COutPoint{txid, k * 256}) & (BUCKETS - 1));
+    BOOST_CHECK_GT(buckets.size(), 100U);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

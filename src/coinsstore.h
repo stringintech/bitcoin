@@ -71,6 +71,9 @@ class CoinsStore : public CCoinsViewCache
     using Node = std::pair<const COutPoint, Entry>;
 
 public:
+    //! KeyHash(), for tests.
+    static uint64_t KeyHashForTest(const COutPoint& outpoint) noexcept { return KeyHash(outpoint); }
+
     //! A write-out run between BeginWriteOut() and CommitWriteOut().
     struct WriteOutRun {
         //! Coins a disconnect restored (KeepWritten()), handed to this run: written before anything else of
@@ -509,11 +512,17 @@ private:
         }
         friend bool operator==(const NodeAllocator&, const NodeAllocator&) noexcept { return true; }
     };
-    //! The salted hash of an outpoint, one salt for all shards: a batch hashes its keys before it takes a shard.
+    //! Where an outpoint goes in its shard's table, one salt for all shards: a batch hashes its keys before
+    //! it takes a shard. The outputs of a transaction are taken in groups of sixteen by index: a group's place
+    //! is the salted hash of the txid and the group, and its outputs lie in the sixteen buckets from there,
+    //! so that making them reads one stretch of the bucket array and not one place for each. The groups are
+    //! salted each, as a whole outpoint is under SaltedCoinsCacheHasher: a transaction cannot choose indices
+    //! whose outputs meet in one bucket (as it could if the index were added to the txid's hash alone).
     static uint64_t KeyHash(const COutPoint& outpoint) noexcept
     {
+        static constexpr uint32_t GROUP{16};
         static const SaltedCoinsCacheHasher hasher;
-        return hasher(outpoint);
+        return hasher(COutPoint{outpoint.hash, outpoint.n / GROUP}) + outpoint.n % GROUP;
     }
     /**
      * A shard's table: chained, with nodes that never move (the lists and a run in flight point at them),
