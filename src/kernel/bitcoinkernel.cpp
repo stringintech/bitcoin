@@ -44,6 +44,7 @@
 #include <validationinterface.h>
 
 #include <atomic>
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <exception>
@@ -1258,6 +1259,13 @@ int btck_chainstate_manager_options_set_database_cache_bytes(btck_ChainstateMana
     opts.m_db_cache_bytes = database_cache_bytes;
     opts.m_blockman_options.block_tree_db_params.cache_bytes = kernel::CacheSizes{database_cache_bytes}.block_tree_db;
     return 0;
+}
+
+void btck_chainstate_manager_options_set_block_cache_bytes(btck_ChainstateManagerOptions* chainman_opts, uint64_t block_cache_bytes)
+{
+    auto& opts{btck_ChainstateManagerOptions::get(chainman_opts)};
+    LOCK(opts.m_mutex);
+    opts.m_chainman_options.block_cache_bytes = static_cast<size_t>(std::min<uint64_t>(block_cache_bytes, std::numeric_limits<size_t>::max()));
 }
 
 void btck_chainstate_manager_options_destroy(btck_ChainstateManagerOptions* options)

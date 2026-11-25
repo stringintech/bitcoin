@@ -59,8 +59,8 @@ struct ChainstateManagerOpts {
     //! twice as many as the connect pool has workers; one disables the window.
     int connect_window{0};
     //! Budget of the connect-side block cache (node::BlockCache), on top of the database and coins caches.
-    //! Zero disables it. A kernel user gets DEFAULT_BLOCK_CACHE_BYTES whatever its cache sizes; bitcoind
-    //! sets it from -blockcache.
+    //! Zero disables it. A kernel user gets DEFAULT_BLOCK_CACHE_BYTES whatever its cache sizes unless it sets
+    //! the budget (btck_chainstate_manager_options_set_block_cache_bytes()); bitcoind sets it from -blockcache.
     size_t block_cache_bytes{DEFAULT_BLOCK_CACHE_BYTES};
     //! Test only (-test=write_out_every_block): start a coins write-out run after every connected block,
     //! two blocks behind the tip, so that the database carries its head marker for the whole run.

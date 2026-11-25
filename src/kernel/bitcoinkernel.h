@@ -1305,7 +1305,8 @@ BITCOINKERNEL_API void btck_chainstate_manager_options_set_worker_threads_num(
  * chainstate database, and in-memory coins cache. If this function is not
  * called, the total cache defaults to 450 MiB. On top of it, whatever the
  * total cache size: up to 128 MiB of accepted blocks kept in memory until they
- * are connected, an eighth of the coins cache and 32 MiB at least for the
+ * are connected (@ref btck_chainstate_manager_options_set_block_cache_bytes),
+ * an eighth of the coins cache and 32 MiB at least for the
  * blocks being connected, up to 64 MiB of undo data waiting to be written, and
  * an eighth of the coins cache and 64 MiB at least for the blocks whose
  * notifications wait for an undo write (more while a reorganisation connects
@@ -1320,6 +1321,21 @@ BITCOINKERNEL_API void btck_chainstate_manager_options_set_worker_threads_num(
 BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_options_set_database_cache_bytes(
     btck_ChainstateManagerOptions* chainstate_manager_options,
     uint64_t database_cache_bytes) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Set the memory for accepted blocks kept until they are connected.
+ *
+ * A block processed before its parent is connected is kept in memory, up to
+ * this many bytes of blocks, so that it is connected without being read back
+ * from disk. The memory is on top of the database cache. If this function is
+ * not called, it is 128 MiB.
+ *
+ * @param[in] chainstate_manager_options Non-null, options to be set.
+ * @param[in] block_cache_bytes          The most bytes of blocks kept. 0 disables the cache.
+ */
+BITCOINKERNEL_API void btck_chainstate_manager_options_set_block_cache_bytes(
+    btck_ChainstateManagerOptions* chainstate_manager_options,
+    uint64_t block_cache_bytes) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * @brief Sets wipe db in the options. In combination with calling
