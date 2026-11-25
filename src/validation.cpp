@@ -4349,6 +4349,18 @@ struct StagedConnect {
     SteadyClock::time_point time_start{};
     SteadyClock::time_point time_read{};
     SteadyClock::time_point time_connected{};
+    //! For the window log (-debug=window): when the block's bytes were read, its task began on a worker,
+    //! its outputs were in the window's table, it was claimed for its validation, the validation began, its
+    //! commit was started and its commit was done; and the block's counts.
+    SteadyClock::time_point time_bytes{};
+    SteadyClock::time_point time_task{};
+    SteadyClock::time_point time_indexed{};
+    SteadyClock::time_point time_claimed{};
+    SteadyClock::time_point time_validate{};
+    SteadyClock::time_point time_commit{};
+    SteadyClock::time_point time_committed{};
+    uint32_t num_txs{0};
+    uint32_t num_inputs{0};
 
     //! What the parsed block takes (ParsedBlockBytes()), written by its worker with `bytes`.
     size_t parsed_bytes{0};
@@ -4467,6 +4479,7 @@ void Chainstate::ReadForConnectTask(StagedConnect& staged, std::shared_ptr<std::
     WAITED_FOR_UNDER_LOCK("a window block's read");
     const FlatFilePos pos{staged.In<connect_phase::Staged>().ctx.block_pos};
     auto read{std::make_shared<node::BlockManager::BlockBytes>(m_blockman.ReadBlockBytes(pos))};
+    staged.time_bytes = SteadyClock::now();
     // Decided before the task is handed on, which may free `staged` and moves the bytes.
     const bool release{read->data && staged.release_files};
     // `staged` is the connector's to free once the task has marked the block indexed: the promise is kept
@@ -4494,6 +4507,7 @@ void Chainstate::RunConnectTask(StagedConnect& staged, node::BlockManager::Block
     // failed allocation, and the process terminates (noexcept): the pool would keep the exception in a
     // future nobody reads, and the connector would wait for the block forever.
     WAITED_FOR_UNDER_LOCK("a window block's validation");
+    staged.time_task = SteadyClock::now();
     connect_phase::Staged& in{staged.In<connect_phase::Staged>()};
     size_t block_bytes{in.ctx.known_bytes};
     if (!in.block) {
@@ -4503,6 +4517,7 @@ void Chainstate::RunConnectTask(StagedConnect& staged, node::BlockManager::Block
         read = {};
         if (!parsed) {
             staged.time_read = staged.time_connected = SteadyClock::now();
+            staged.time_indexed = staged.time_claimed = staged.time_validate = staged.time_connected;
             staged.at.emplace<connect_phase::ReadFailed>();
             OnWindowBlockIndexed(staged);
             return;
@@ -4511,6 +4526,7 @@ void Chainstate::RunConnectTask(StagedConnect& staged, node::BlockManager::Block
     }
     staged.time_read = SteadyClock::now();
     staged.sync->outputs.Index(staged.pindex->nHeight, in.block);
+    staged.time_indexed = SteadyClock::now();
     size_t inputs;
     staged.parsed_bytes = ParsedBlockBytes(*in.block, block_bytes, inputs);
     staged.bytes = staged.parsed_bytes + inputs * VIEW_BYTES_PER_ENTRY;
@@ -4540,6 +4556,7 @@ void Chainstate::OnWindowBlockIndexed(StagedConnect& staged)
             if (!node::IsIndexed(s->window)) break;
             if (s->window != node::WindowBlockState::Indexed) continue;
             s->Transit(node::WindowBlockEvent::Claim);
+            s->time_claimed = SteadyClock::now();
             ready.push_back(s);
         }
     }
@@ -4945,8 +4962,10 @@ std::shared_ptr<CommitJob> StartCommitJob(WindowSync& sync, StagedConnect& front
         if (!node::IsComplete(s->window) || !Committable(*s)) break;
         job->blocks.push_back(s);
     }
+    const auto now{SteadyClock::now()};
     for (StagedConnect* s : job->blocks) {
         s->in_job = true;
+        s->time_commit = now;
         job->items += s->items.size();
         job->heights.push_back(s->pindex->nHeight);
     }
@@ -5010,6 +5029,7 @@ void RunCommitWork(WindowSync& sync) noexcept
                             s->commit_failed = true;
                         } else {
                             s->committed = true;
+                            s->time_committed = SteadyClock::now();
                         }
                     }
                 }
@@ -5026,6 +5046,7 @@ void Chainstate::RunWindowValidation(StagedConnect& s, WindowSync& sync) noexcep
     // The block was claimed for this call, which has its phase alone until it marks the block finished.
     // As in RunConnectTask: a std::runtime_error stops the node, anything else terminates the process.
     WAITED_FOR_UNDER_LOCK("a window block's validation");
+    s.time_validate = SteadyClock::now();
     size_t bytes;
     {
         // The block's validation, read only against the store: every lower block in flight is in the
@@ -5062,6 +5083,8 @@ void Chainstate::RunWindowValidation(StagedConnect& s, WindowSync& sync) noexcep
             FatalError(m_chainman.GetNotifications(), state, Untranslated(failure->what));
         }
         s.time_connected = SteadyClock::now();
+        s.num_txs = in.block->vtx.size();
+        s.num_inputs = result.num_inputs;
         // Assigned under the mutex below: the block counts as indexed while it is validated, and WindowBytes() reads
         // the count meanwhile.
         bytes = s.parsed_bytes + s.view->DynamicMemoryUsage() + UndoBytes(result.undo) + memusage::DynamicUsage(s.items);
@@ -6401,6 +6424,15 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                             return false;
                         }
                         PruneBlockIndexCandidates();
+                        if (step->use_window) {
+                            // One line per window block, at its publication; times are steady-clock microseconds.
+                            const auto us{[](SteadyClock::time_point t) { return Ticks<std::chrono::microseconds>(t.time_since_epoch()); }};
+                            LogDebug(BCLog::WINDOW, "window-c h=%d txs=%u ins=%u staged=%d read=%d task=%d indexed=%d claimed=%d validate=%d validated=%d commit=%d committed=%d confirmed=%d",
+                                     staged->pindex->nHeight, staged->num_txs, staged->num_inputs,
+                                     us(staged->time_start), us(staged->time_bytes == SteadyClock::time_point{} ? staged->time_start : staged->time_bytes),
+                                     us(staged->time_task), us(staged->time_indexed), us(staged->time_claimed), us(staged->time_validate),
+                                     us(staged->time_connected), us(staged->time_commit), us(staged->time_committed), us(SteadyClock::now()));
+                        }
                         if (!step->use_window) {
                             if (!step->old_tip || m_chain.Tip()->nChainWork > step->old_tip->nChainWork) {
                                 // We're in a better position than we were. The step ends; the locks are kept for
